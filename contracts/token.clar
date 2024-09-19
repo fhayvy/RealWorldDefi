@@ -1,5 +1,8 @@
 ;; Tokenized Multi-Asset Management Platform
 
+;; Define the contract owner
+(define-data-var contract-owner principal tx-sender)
+
 ;; Define the asset structure
 (define-map assets
   { asset-id: uint }
@@ -22,6 +25,12 @@
 (define-constant err-asset-exists (err u101))
 (define-constant err-asset-not-found (err u102))
 (define-constant err-insufficient-balance (err u103))
+(define-constant err-invalid-name (err u104))
+(define-constant err-invalid-type (err u105))
+(define-constant err-invalid-supply (err u106))
+(define-constant err-invalid-price (err u107))
+(define-constant err-invalid-receiver (err u108))
+(define-constant err-invalid-amount (err u109))
 
 ;; Counter for asset IDs
 (define-data-var asset-id-nonce uint u0)
@@ -32,14 +41,19 @@
     (
       (asset-id (+ (var-get asset-id-nonce) u1))
     )
-    (asserts! (is-eq tx-sender contract-owner) err-unauthorized)
+    (asserts! (is-eq tx-sender (var-get contract-owner)) err-unauthorized)
     (asserts! (is-none (map-get? assets { asset-id: asset-id })) err-asset-exists)
+    ;; Input validation
+    (asserts! (> (len name) u0) err-invalid-name)
+    (asserts! (> (len type) u0) err-invalid-type)
+    (asserts! (> total-supply u0) err-invalid-supply)
+    (asserts! (> price u0) err-invalid-price)
     (map-set assets
       { asset-id: asset-id }
       { name: name, type: type, total-supply: total-supply, price: price }
     )
     (map-set holdings
-      { owner: contract-owner, asset-id: asset-id }
+      { owner: (var-get contract-owner), asset-id: asset-id }
       { balance: total-supply }
     )
     (var-set asset-id-nonce asset-id)
@@ -51,17 +65,39 @@
 (define-public (transfer (to principal) (asset-id uint) (amount uint))
   (let
     (
-      (sender-balance (get balance (map-get? holdings { owner: tx-sender, asset-id: asset-id })))
-      (recipient-balance (get balance (default-to { balance: u0 } (map-get? holdings { owner: to, asset-id: asset-id }))))
+      (sender tx-sender)
     )
-    (asserts! (>= sender-balance amount) err-insufficient-balance)
+    (asserts! (and (is-some (map-get? assets { asset-id: asset-id }))
+                   (not (is-eq to sender))
+                   (> amount u0)) 
+              (if (is-none (map-get? assets { asset-id: asset-id }))
+                  err-asset-not-found
+                  (if (is-eq to sender)
+                      err-invalid-receiver
+                      err-invalid-amount)))
+    (match (map-get? holdings { owner: sender, asset-id: asset-id })
+      sender-balance (transfer-asset sender to asset-id amount sender-balance)
+      err-insufficient-balance)
+  )
+)
+
+;; Helper function to perform asset transfer
+(define-private (transfer-asset (sender principal) (receiver principal) (asset-id uint) (amount uint) (sender-balance { balance: uint }))
+  (let
+    (
+      (sender-new-balance (- (get balance sender-balance) amount))
+      (receiver-balance (default-to { balance: u0 } 
+        (map-get? holdings { owner: receiver, asset-id: asset-id })))
+      (receiver-new-balance (+ (get balance receiver-balance) amount))
+    )
+    (asserts! (>= (get balance sender-balance) amount) err-insufficient-balance)
     (map-set holdings
-      { owner: tx-sender, asset-id: asset-id }
-      { balance: (- sender-balance amount) }
+      { owner: sender, asset-id: asset-id }
+      { balance: sender-new-balance }
     )
     (map-set holdings
-      { owner: to, asset-id: asset-id }
-      { balance: (+ recipient-balance amount) }
+      { owner: receiver, asset-id: asset-id }
+      { balance: receiver-new-balance }
     )
     (ok true)
   )
@@ -77,13 +113,11 @@
   (default-to { balance: u0 } (map-get? holdings { owner: owner, asset-id: asset-id }))
 )
 
-;; Contract owner
-(define-data-var contract-owner principal tx-sender)
-
 ;; Function to change contract owner
 (define-public (set-contract-owner (new-owner principal))
   (begin
     (asserts! (is-eq tx-sender (var-get contract-owner)) err-unauthorized)
+    (asserts! (not (is-eq new-owner (var-get contract-owner))) err-unauthorized)
     (ok (var-set contract-owner new-owner))
   )
 )

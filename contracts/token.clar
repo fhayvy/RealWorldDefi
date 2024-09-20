@@ -38,6 +38,7 @@
 (define-constant err-invalid-receiver (err u108))
 (define-constant err-invalid-amount (err u109))
 (define-constant err-not-approved (err u110))
+(define-constant err-invalid-spender (err u111))
 
 ;; Counter for asset IDs
 (define-data-var asset-id-nonce uint u0)
@@ -80,6 +81,8 @@
       (sender tx-sender)
     )
     (asserts! (is-valid-asset-id asset-id) err-asset-not-found)
+    (asserts! (not (is-eq spender sender)) err-invalid-spender)
+    (asserts! (>= amount u0) err-invalid-amount)
     (map-set approvals
       { owner: sender, spender: spender, asset-id: asset-id }
       { amount: amount }

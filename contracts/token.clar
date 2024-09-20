@@ -20,6 +20,12 @@
   { balance: uint }
 )
 
+;; Define approval structure
+(define-map approvals
+  { owner: principal, spender: principal, asset-id: uint }
+  { amount: uint }
+)
+
 ;; Define error constants
 (define-constant err-unauthorized (err u100))
 (define-constant err-asset-exists (err u101))
@@ -31,6 +37,7 @@
 (define-constant err-invalid-price (err u107))
 (define-constant err-invalid-receiver (err u108))
 (define-constant err-invalid-amount (err u109))
+(define-constant err-not-approved (err u110))
 
 ;; Counter for asset IDs
 (define-data-var asset-id-nonce uint u0)
@@ -66,6 +73,28 @@
   (is-some (map-get? assets { asset-id: asset-id }))
 )
 
+;; Function to approve a spender
+(define-public (approve (spender principal) (asset-id uint) (amount uint))
+  (let
+    (
+      (sender tx-sender)
+    )
+    (asserts! (is-valid-asset-id asset-id) err-asset-not-found)
+    (map-set approvals
+      { owner: sender, spender: spender, asset-id: asset-id }
+      { amount: amount }
+    )
+    (ok true)
+  )
+)
+
+;; Function to get approved amount
+(define-read-only (get-approved-amount (owner principal) (spender principal) (asset-id uint))
+  (default-to { amount: u0 }
+    (map-get? approvals { owner: owner, spender: spender, asset-id: asset-id })
+  )
+)
+
 ;; Function to transfer tokens
 (define-public (transfer (to principal) (asset-id uint) (amount uint))
   (let
@@ -75,29 +104,44 @@
     (asserts! (is-valid-asset-id asset-id) err-asset-not-found)
     (asserts! (not (is-eq to sender)) err-invalid-receiver)
     (asserts! (> amount u0) err-invalid-amount)
-    (match (map-get? holdings { owner: sender, asset-id: asset-id })
-      sender-balance (transfer-asset sender to asset-id amount sender-balance)
-      err-insufficient-balance)
+    (transfer-asset sender to asset-id amount)
+  )
+)
+
+;; Function to transfer tokens on behalf of another user
+(define-public (transfer-from (from principal) (to principal) (asset-id uint) (amount uint))
+  (let
+    (
+      (sender tx-sender)
+      (approved-amount (get amount (get-approved-amount from sender asset-id)))
+    )
+    (asserts! (is-valid-asset-id asset-id) err-asset-not-found)
+    (asserts! (not (is-eq to from)) err-invalid-receiver)
+    (asserts! (>= approved-amount amount) err-not-approved)
+    (asserts! (> amount u0) err-invalid-amount)
+    (map-set approvals
+      { owner: from, spender: sender, asset-id: asset-id }
+      { amount: (- approved-amount amount) }
+    )
+    (transfer-asset from to asset-id amount)
   )
 )
 
 ;; Helper function to perform asset transfer
-(define-private (transfer-asset (sender principal) (receiver principal) (asset-id uint) (amount uint) (sender-balance { balance: uint }))
+(define-private (transfer-asset (from principal) (to principal) (asset-id uint) (amount uint))
   (let
     (
-      (sender-new-balance (- (get balance sender-balance) amount))
-      (receiver-balance (default-to { balance: u0 } 
-        (map-get? holdings { owner: receiver, asset-id: asset-id })))
-      (receiver-new-balance (+ (get balance receiver-balance) amount))
+      (sender-balance (get balance (default-to { balance: u0 } (map-get? holdings { owner: from, asset-id: asset-id }))))
+      (receiver-balance (get balance (default-to { balance: u0 } (map-get? holdings { owner: to, asset-id: asset-id }))))
     )
-    (asserts! (>= (get balance sender-balance) amount) err-insufficient-balance)
+    (asserts! (>= sender-balance amount) err-insufficient-balance)
     (map-set holdings
-      { owner: sender, asset-id: asset-id }
-      { balance: sender-new-balance }
+      { owner: from, asset-id: asset-id }
+      { balance: (- sender-balance amount) }
     )
     (map-set holdings
-      { owner: receiver, asset-id: asset-id }
-      { balance: receiver-new-balance }
+      { owner: to, asset-id: asset-id }
+      { balance: (+ receiver-balance amount) }
     )
     (ok true)
   )

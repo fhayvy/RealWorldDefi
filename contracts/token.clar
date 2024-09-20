@@ -61,20 +61,20 @@
   )
 )
 
+;; Function to validate asset-id
+(define-read-only (is-valid-asset-id (asset-id uint))
+  (is-some (map-get? assets { asset-id: asset-id }))
+)
+
 ;; Function to transfer tokens
 (define-public (transfer (to principal) (asset-id uint) (amount uint))
   (let
     (
       (sender tx-sender)
     )
-    (asserts! (and (is-some (map-get? assets { asset-id: asset-id }))
-                   (not (is-eq to sender))
-                   (> amount u0)) 
-              (if (is-none (map-get? assets { asset-id: asset-id }))
-                  err-asset-not-found
-                  (if (is-eq to sender)
-                      err-invalid-receiver
-                      err-invalid-amount)))
+    (asserts! (is-valid-asset-id asset-id) err-asset-not-found)
+    (asserts! (not (is-eq to sender)) err-invalid-receiver)
+    (asserts! (> amount u0) err-invalid-amount)
     (match (map-get? holdings { owner: sender, asset-id: asset-id })
       sender-balance (transfer-asset sender to asset-id amount sender-balance)
       err-insufficient-balance)

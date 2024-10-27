@@ -1,14 +1,14 @@
+;; marketplace.clar
 ;; Asset Marketplace Contract
-;; This contract allows users to list and trade assets from the main token contract
 
-;; Import the token trait from `token-trait.clar`
-(use-trait token .token)
+;; Import the token trait
+(use-trait token-trait .token-trait.token-trait)
 
 ;; Define the contract owner
 (define-data-var contract-owner principal tx-sender)
 
 ;; Define token contract principal
-(define-data-var token-contract-principal principal 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.token-contract)
+(define-data-var token-contract-principal principal 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.token)
 
 ;; Define listing structure
 (define-map listings
@@ -37,11 +37,10 @@
 (define-constant err-token-contract-error (err u208))
 
 ;; Helper function to get balance with default
-(define-private (get-balance-or-default (owner principal) (asset-id uint))
-  (let ((token-contract (as-contract (var-get token-contract-principal))))
-    (match (contract-call? token-contract get-balance owner asset-id)
-      success (get balance success)
-      error u0))
+(define-private (get-balance-or-default (token <token-trait>) (owner principal) (asset-id uint))
+  (match (contract-call? token get-balance owner asset-id)
+    success (get balance success)
+    error u0)
 )
 
 ;; Function to update token contract principal
@@ -53,20 +52,19 @@
 )
 
 ;; Function to create a new listing
-(define-public (create-listing (asset-id uint) (amount uint) (price-per-token uint))
+(define-public (create-listing (token <token-trait>) (asset-id uint) (amount uint) (price-per-token uint))
   (let
     (
       (listing-id (+ (var-get listing-id-nonce) u1))
       (seller tx-sender)
-      (seller-balance (get-balance-or-default seller asset-id))
-      (token-contract (as-contract (var-get token-contract-principal)))
+      (seller-balance (get-balance-or-default token seller asset-id))
     )
     ;; Input validation
     (asserts! (> amount u0) err-invalid-amount)
     (asserts! (> price-per-token u0) err-invalid-price)
     
     ;; Verify asset exists and seller has sufficient balance
-    (asserts! (unwrap! (contract-call? token-contract is-valid-asset-id asset-id) err-invalid-listing))
+    (asserts! (unwrap! (contract-call? token is-valid-asset-id asset-id) err-invalid-listing))
     (asserts! (>= seller-balance amount) err-insufficient-funds)
     
     ;; Create listing
@@ -82,7 +80,7 @@
     )
     
     ;; Approve marketplace contract to transfer tokens
-    (try! (contract-call? token-contract approve (as-contract tx-sender) asset-id amount))
+    (try! (contract-call? token approve (as-contract tx-sender) asset-id amount))
     
     (var-set listing-id-nonce listing-id)
     (ok listing-id)
@@ -90,12 +88,11 @@
 )
 
 ;; Function to cancel a listing
-(define-public (cancel-listing (listing-id uint))
+(define-public (cancel-listing (token <token-trait>) (listing-id uint))
   (let
     (
       (listing (unwrap! (map-get? listings { listing-id: listing-id }) err-listing-not-found))
       (seller tx-sender)
-      (token-contract (as-contract (var-get token-contract-principal)))
     )
     ;; Verify sender is the seller
     (asserts! (is-eq (get seller listing) seller) err-not-seller)
@@ -109,27 +106,26 @@
     )
     
     ;; Remove approval
-    (try! (contract-call? token-contract approve (as-contract tx-sender) (get asset-id listing) u0))
+    (try! (contract-call? token approve (as-contract tx-sender) (get asset-id listing) u0))
     
     (ok true)
   )
 )
 
 ;; Function to purchase from a listing
-(define-public (purchase-listing (listing-id uint) (amount uint))
+(define-public (purchase-listing (token <token-trait>) (listing-id uint) (amount uint))
   (let
     (
       (listing (unwrap! (map-get? listings { listing-id: listing-id }) err-listing-not-found))
       (buyer tx-sender)
       (total-price (* amount (get price-per-token listing)))
-      (token-contract (as-contract (var-get token-contract-principal)))
     )
     ;; Verify listing is active and amount is valid
     (asserts! (get active listing) err-listing-not-active)
     (asserts! (<= amount (get amount listing)) err-invalid-amount)
     
     ;; Transfer tokens from seller to buyer
-    (try! (contract-call? token-contract transfer-from 
+    (try! (contract-call? token transfer-from 
             (get seller listing) 
             buyer
             (get asset-id listing)

@@ -5,8 +5,18 @@ authors = []
 telemetry = true
 cache_dir = './.cache'
 requirements = []
+[contracts.market]
+path = 'contracts/market.clar'
+clarity_version = 2
+epoch = 2.5
+
 [contracts.token]
 path = 'contracts/token.clar'
+clarity_version = 2
+epoch = 2.5
+
+[contracts.token-trait]
+path = 'contracts/token-trait.clar'
 clarity_version = 2
 epoch = 2.5
 [repl.analysis]

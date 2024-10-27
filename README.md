@@ -1,121 +1,180 @@
-# ReadWorldDefi - Tokenized Multi-Asset Management Platform
+# RealWorldDefi - Tokenized Multi-Asset Management Platform
 
 ## Overview
 
-This project implements a decentralized platform for tokenizing and trading real-world assets such as real estate, art, and commodities. Built on blockchain technology, it allows for fractional ownership of high-value assets, increasing liquidity and accessibility for investors. The platform is implemented using Clarity smart contracts on the Stacks blockchain.
+This project implements a decentralized platform for tokenizing and trading real-world assets such as real estate, art, and commodities. Built on blockchain technology, it allows for fractional ownership of high-value assets, increasing liquidity and accessibility for investors. The platform is implemented using Clarity smart contracts on the Stacks blockchain and includes both token management and marketplace functionality.
 
 ## Features
 
 - Multi-asset tokenization (real estate, art, commodities, etc.)
 - Fractional ownership of high-value assets
-- Decentralized trading platform
+- Decentralized marketplace for trading assets
 - Smart contract-based asset management
-- User-friendly interface for asset owners and investors
+- Approval-based trading system
+- Listing management system
 - Regulatory compliance tools
-- Integration with external oracles for asset valuation
+- Secure transfer mechanisms
 
-## Technology Stack
+## Smart Contracts Architecture
 
-- Smart Contracts: Clarity (for Stacks blockchain)
+The platform consists of three main smart contracts:
 
-## Smart Contract Functions
+1. `token.clar`: Manages the tokenization of assets
+2. `marketplace.clar`: Handles the buying and selling of tokenized assets
+3. `token-trait.clar`: Defines the shared interface for token operations
 
-The core functionality is implemented in a Clarity smart contract, which includes:
+### Token Contract Functions
 
-### Public Functions
+#### Public Functions
 
-1. `create-asset`: Create a new tokenized asset
-2. `transfer`: Transfer asset tokens between users
-3. `set-contract-owner`: Change the contract owner
+1. `create-asset (name type total-supply price)`: Create a new tokenized asset
+2. `transfer (to asset-id amount)`: Transfer tokens directly
+3. `transfer-from (from to asset-id amount)`: Transfer tokens on behalf of another user
+4. `approve (spender asset-id amount)`: Approve another address to spend tokens
+5. `set-contract-owner (new-owner)`: Update contract ownership
 
-### Read-Only Functions
+#### Read-Only Functions
 
-1. `is-valid-asset-id`: Check if an asset ID is valid
-2. `get-asset-details`: Retrieve details of a specific asset
-3. `get-balance`: Get the balance of a specific asset for a user
+1. `is-valid-asset-id (asset-id)`: Validate asset ID
+2. `get-asset-details (asset-id)`: Get asset information
+3. `get-balance (owner asset-id)`: Check token balance
+4. `get-approved-amount (owner spender asset-id)`: Check approved spending amount
+
+### Marketplace Contract Functions
+
+#### Public Functions
+
+1. `create-listing (token asset-id amount price-per-token)`: Create new marketplace listing
+2. `cancel-listing (token listing-id)`: Cancel an active listing
+3. `purchase-listing (token listing-id amount)`: Purchase tokens from a listing
+4. `set-token-contract (new-contract)`: Update token contract reference
+5. `set-contract-owner (new-owner)`: Update marketplace contract ownership
+
+#### Read-Only Functions
+
+1. `get-listing-details (listing-id)`: Get information about a listing
+2. `is-listing-active (listing-id)`: Check if a listing is active
+3. `get-token-contract`: Get current token contract principal
 
 ## Setup and Deployment
 
-1. Install the Stacks CLI and set up your local development environment.
-2. Clone this repository:
-   ```
+1. Install the Stacks CLI and development environment
+2. Clone the repository:
+   ```bash
    git clone https://github.com/fhayvy/RealWorldDefi.git
    cd RealWorldDefi
    ```
-3. Deploy the contract to the Stacks blockchain:
-   ```
+3. Deploy the contracts in the following order:
+   ```bash
+   clarinet contract:deploy token-trait
    clarinet contract:deploy token
+   clarinet contract:deploy marketplace
    ```
 
-## Usage
+## Usage Guide
 
-### Creating a New Asset
+### Asset Management
 
-To create a new tokenized asset, call the `create-asset` function with the following parameters:
-- `name`: Asset name (string-ascii, max 64 characters)
-- `type`: Asset type (e.g., "Real Estate", "Art", "Commodity")
-- `total-supply`: Total supply of tokens for this asset
-- `price`: Initial price per token
-
-Example:
+#### Creating a New Asset
 ```clarity
-(contract-call? .token create-asset "Mona Lisa Fraction" "Art" u1000000 u100)
+(contract-call? .token create-asset 
+    "Luxury Apartment 123" 
+    "Real Estate" 
+    u1000000 
+    u100)
 ```
 
-### Transferring Asset Tokens
-
-To transfer asset tokens, call the `transfer` function with the following parameters:
-- `to`: Recipient's principal
-- `asset-id`: ID of the asset to transfer
-- `amount`: Amount of tokens to transfer
-
-Example:
+#### Approving Token Transfers
 ```clarity
-(contract-call? .token transfer 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM u1 u100)
+(contract-call? .token approve 
+    'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM 
+    u1 
+    u1000)
 ```
 
-### Checking Asset Details
-
-To check asset details, call the `get-asset-details` function with the asset ID:
-
-Example:
+#### Transferring Tokens
 ```clarity
-(contract-call? .token get-asset-details u1)
+(contract-call? .token transfer 
+    'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM 
+    u1 
+    u100)
 ```
 
-### Checking User Balance
+### Marketplace Operations
 
-To check a user's balance for a specific asset, call the `get-balance` function with the user's principal and the asset ID:
-
-Example:
+#### Creating a Listing
 ```clarity
-(contract-call? .token get-balance 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM u1)
+(contract-call? .marketplace create-listing 
+    .token 
+    u1 
+    u100 
+    u50)
 ```
 
-## Security Considerations
+#### Purchasing from a Listing
+```clarity
+(contract-call? .marketplace purchase-listing 
+    .token 
+    u1 
+    u10)
+```
 
-- Only the contract owner can create new assets.
-- Asset transfers are only allowed if the sender has sufficient balance.
-- The contract includes checks to prevent common errors, such as transferring to oneself or using invalid asset IDs.
-- Regulatory compliance tools are implemented to ensure adherence to relevant laws and regulations.
+#### Canceling a Listing
+```clarity
+(contract-call? .marketplace cancel-listing 
+    .token 
+    u1)
+```
+
+## Security Features
+
+- Role-based access control for administrative functions
+- Approval-based token transfers
+- Balance verification before transfers
+- Active listing validation
+- Built-in error handling and input validation
+- Secure marketplace escrow mechanism
+
+## Error Handling
+
+The contracts include comprehensive error handling with specific error codes:
+
+### Token Contract Errors
+- `err-unauthorized (u100)`: Unauthorized operation
+- `err-asset-exists (u101)`: Asset already exists
+- `err-insufficient-balance (u103)`: Insufficient token balance
+- Plus additional validation errors
+
+### Marketplace Contract Errors
+- `err-unauthorized (u200)`: Unauthorized operation
+- `err-invalid-listing (u201)`: Invalid listing parameters
+- `err-listing-not-found (u202)`: Listing doesn't exist
+- Plus additional marketplace-specific errors
 
 ## Future Enhancements
 
-- Integration with external oracles for real-time asset valuation
-- Implementation of a decentralized exchange for trading asset tokens
-- Development of a user-friendly web interface for asset owners and investors
-- Addition of more complex financial instruments and derivatives based on the tokenized assets
+1. Price oracle integration for real-time asset valuation
+2. Advanced trading features (auctions, offers, bulk trades)
+3. Enhanced reporting and analytics
+4. Multi-signature functionality for high-value transactions
+5. Integration with DeFi protocols for lending and borrowing
+6. Cross-chain bridge functionality
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Contributions are welcome! Please follow these steps:
 
 1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
+2. Create a feature branch (`git checkout -b feature/NewFeature`)
+3. Commit changes (`git commit -m 'Add NewFeature'`)
+4. Push to branch (`git push origin feature/NewFeature`)
 5. Open a Pull Request
+
+## License
+
+[Add your chosen license]
 
 ## Author
 
 Favour Chiamaka Eze
+

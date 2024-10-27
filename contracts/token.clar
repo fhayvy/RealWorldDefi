@@ -1,4 +1,6 @@
+;; token.clar
 ;; Tokenized Multi-Asset Management Platform
+(impl-trait .token-trait.token-trait)
 
 ;; Define the contract owner
 (define-data-var contract-owner principal tx-sender)
@@ -70,8 +72,8 @@
 )
 
 ;; Function to validate asset-id
-(define-read-only (is-valid-asset-id (asset-id uint))
-  (is-some (map-get? assets { asset-id: asset-id }))
+(define-public (is-valid-asset-id (asset-id uint))
+  (ok (is-some (map-get? assets { asset-id: asset-id })))
 )
 
 ;; Function to approve a spender
@@ -80,7 +82,7 @@
     (
       (sender tx-sender)
     )
-    (asserts! (is-valid-asset-id asset-id) err-asset-not-found)
+    (asserts! (is-some (map-get? assets { asset-id: asset-id })) err-asset-not-found)
     (asserts! (not (is-eq spender sender)) err-invalid-spender)
     (asserts! (>= amount u0) err-invalid-amount)
     (map-set approvals
@@ -98,13 +100,19 @@
   )
 )
 
+;; Function to get balance
+(define-public (get-balance (owner principal) (asset-id uint))
+  (ok (default-to { balance: u0 } 
+    (map-get? holdings { owner: owner, asset-id: asset-id })))
+)
+
 ;; Function to transfer tokens
 (define-public (transfer (to principal) (asset-id uint) (amount uint))
   (let
     (
       (sender tx-sender)
     )
-    (asserts! (is-valid-asset-id asset-id) err-asset-not-found)
+    (asserts! (is-some (map-get? assets { asset-id: asset-id })) err-asset-not-found)
     (asserts! (not (is-eq to sender)) err-invalid-receiver)
     (asserts! (> amount u0) err-invalid-amount)
     (transfer-asset sender to asset-id amount)
@@ -118,7 +126,7 @@
       (sender tx-sender)
       (approved-amount (get amount (get-approved-amount from sender asset-id)))
     )
-    (asserts! (is-valid-asset-id asset-id) err-asset-not-found)
+    (asserts! (is-some (map-get? assets { asset-id: asset-id })) err-asset-not-found)
     (asserts! (not (is-eq to from)) err-invalid-receiver)
     (asserts! (>= approved-amount amount) err-not-approved)
     (asserts! (> amount u0) err-invalid-amount)
@@ -153,11 +161,6 @@
 ;; Function to get asset details
 (define-read-only (get-asset-details (asset-id uint))
   (map-get? assets { asset-id: asset-id })
-)
-
-;; Function to get user balance for an asset
-(define-read-only (get-balance (owner principal) (asset-id uint))
-  (default-to { balance: u0 } (map-get? holdings { owner: owner, asset-id: asset-id }))
 )
 
 ;; Function to change contract owner

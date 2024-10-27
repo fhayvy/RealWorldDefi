@@ -3,6 +3,15 @@
 ;; Define the contract owner
 (define-data-var contract-owner principal tx-sender)
 
+(define-trait token
+  (
+    (is-valid-asset-id (uint) (response bool uint))
+    (get-balance (principal uint) (response {balance: uint} uint))
+    (approve (principal uint uint) (response bool uint))
+    (transfer-from (principal principal uint uint) (response bool uint))
+  )
+)
+
 ;; Define the asset structure
 (define-map assets
   { asset-id: uint }

@@ -1,8 +1,14 @@
 ;; Asset Marketplace Contract
 ;; This contract allows users to list and trade assets from the main token contract
 
+;; Import the token trait from `token-trait.clar`
+(use-trait token .token)
+
 ;; Define the contract owner
 (define-data-var contract-owner principal tx-sender)
+
+;; Define token contract principal
+(define-data-var token-contract-principal principal 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.token-contract)
 
 ;; Define listing structure
 (define-map listings
@@ -28,9 +34,23 @@
 (define-constant err-invalid-price (err u205))
 (define-constant err-invalid-amount (err u206))
 (define-constant err-not-seller (err u207))
+(define-constant err-token-contract-error (err u208))
 
-;; Reference to the token contract
-(define-constant token-contract .token-contract)
+;; Helper function to get balance with default
+(define-private (get-balance-or-default (owner principal) (asset-id uint))
+  (let ((token-contract (as-contract (var-get token-contract-principal))))
+    (match (contract-call? token-contract get-balance owner asset-id)
+      success (get balance success)
+      error u0))
+)
+
+;; Function to update token contract principal
+(define-public (set-token-contract (new-contract principal))
+  (begin
+    (asserts! (is-eq tx-sender (var-get contract-owner)) err-unauthorized)
+    (ok (var-set token-contract-principal new-contract))
+  )
+)
 
 ;; Function to create a new listing
 (define-public (create-listing (asset-id uint) (amount uint) (price-per-token uint))
@@ -38,15 +58,16 @@
     (
       (listing-id (+ (var-get listing-id-nonce) u1))
       (seller tx-sender)
+      (seller-balance (get-balance-or-default seller asset-id))
+      (token-contract (as-contract (var-get token-contract-principal)))
     )
     ;; Input validation
     (asserts! (> amount u0) err-invalid-amount)
     (asserts! (> price-per-token u0) err-invalid-price)
     
     ;; Verify asset exists and seller has sufficient balance
-    (asserts! (contract-call? token-contract is-valid-asset-id asset-id) err-invalid-listing)
-    (asserts! (>= (get balance (contract-call? token-contract get-balance seller asset-id)) amount) 
-              err-insufficient-funds)
+    (asserts! (unwrap! (contract-call? token-contract is-valid-asset-id asset-id) err-invalid-listing))
+    (asserts! (>= seller-balance amount) err-insufficient-funds)
     
     ;; Create listing
     (map-set listings
@@ -74,6 +95,7 @@
     (
       (listing (unwrap! (map-get? listings { listing-id: listing-id }) err-listing-not-found))
       (seller tx-sender)
+      (token-contract (as-contract (var-get token-contract-principal)))
     )
     ;; Verify sender is the seller
     (asserts! (is-eq (get seller listing) seller) err-not-seller)
@@ -87,8 +109,7 @@
     )
     
     ;; Remove approval
-    (try! (contract-call? token-contract approve (as-contract tx-sender) 
-           (get asset-id listing) u0))
+    (try! (contract-call? token-contract approve (as-contract tx-sender) (get asset-id listing) u0))
     
     (ok true)
   )
@@ -101,17 +122,18 @@
       (listing (unwrap! (map-get? listings { listing-id: listing-id }) err-listing-not-found))
       (buyer tx-sender)
       (total-price (* amount (get price-per-token listing)))
+      (token-contract (as-contract (var-get token-contract-principal)))
     )
     ;; Verify listing is active and amount is valid
     (asserts! (get active listing) err-listing-not-active)
     (asserts! (<= amount (get amount listing)) err-invalid-amount)
     
     ;; Transfer tokens from seller to buyer
-    (try! (as-contract (contract-call? token-contract transfer-from 
+    (try! (contract-call? token-contract transfer-from 
             (get seller listing) 
             buyer
             (get asset-id listing)
-            amount)))
+            amount))
     
     ;; Transfer STX payment from buyer to seller
     (try! (stx-transfer? total-price buyer (get seller listing)))
@@ -145,6 +167,11 @@
       (map-get? listings { listing-id: listing-id })
     ))
   )
+)
+
+;; Function to get current token contract principal
+(define-read-only (get-token-contract)
+  (ok (var-get token-contract-principal))
 )
 
 ;; Function to change contract owner

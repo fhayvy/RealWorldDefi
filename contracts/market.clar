@@ -58,13 +58,12 @@
       (listing-id (+ (var-get listing-id-nonce) u1))
       (seller tx-sender)
       (seller-balance (get-balance-or-default token seller asset-id))
+      (asset-valid (unwrap! (contract-call? token is-valid-asset-id asset-id) err-invalid-listing))
     )
     ;; Input validation
+    (asserts! asset-valid err-invalid-listing)
     (asserts! (> amount u0) err-invalid-amount)
     (asserts! (> price-per-token u0) err-invalid-price)
-    
-    ;; Verify asset exists and seller has sufficient balance
-    (asserts! (unwrap! (contract-call? token is-valid-asset-id asset-id) err-invalid-listing))
     (asserts! (>= seller-balance amount) err-insufficient-funds)
     
     ;; Create listing
@@ -156,14 +155,13 @@
 
 ;; Function to check if listing is active
 (define-read-only (is-listing-active (listing-id uint))
-  (default-to 
-    false
-    (get active (default-to 
-      { active: false }
-      (map-get? listings { listing-id: listing-id })
-    ))
+  (match (map-get? listings { listing-id: listing-id })
+    some-listing (ok (get active some-listing))
+    (ok false)
   )
 )
+
+
 
 ;; Function to get current token contract principal
 (define-read-only (get-token-contract)
